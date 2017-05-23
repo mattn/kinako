@@ -2,7 +2,7 @@
 package parser
 
 import (
-	"github.com/mattn/unko/ast"
+	"github.com/mattn/kinako/ast"
 )
 
 %}

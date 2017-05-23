@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"unicode"
 
-	"github.com/mattn/unko/ast"
+	"github.com/mattn/kinako/ast"
 )
 
 const (

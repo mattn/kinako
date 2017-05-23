@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mattn/unko/ast"
+	"github.com/mattn/kinako/ast"
 )
 
 var (
