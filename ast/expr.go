@@ -81,8 +81,6 @@ type CallExpr struct {
 	Func     interface{}
 	Name     string
 	SubExprs []Expr
-	VarArg   bool
-	Go       bool
 }
 
 // ParenExpr provide parent block expression.

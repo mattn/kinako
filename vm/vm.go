@@ -385,10 +385,7 @@ func invokeExpr(expr ast.Expr, env *Env) (reflect.Value, error) {
 			return f, err
 		}
 
-		_, isReflect := f.Interface().(Func)
-
 		args := []reflect.Value{}
-		l := len(e.SubExprs)
 		for i, expr := range e.SubExprs {
 			arg, err := invokeExpr(expr, env)
 			if err != nil {
@@ -410,12 +407,6 @@ func invokeExpr(expr ast.Expr, env *Env) (reflect.Value, error) {
 								for i := range args {
 									args[i] = reflect.ValueOf(args[i])
 								}
-								if e.Go {
-									go func() {
-										rfunc.Call(args)
-									}()
-									return []reflect.Value{}
-								}
 								return rfunc.Call(args)[:it.NumOut()]
 							})
 						}
@@ -428,26 +419,7 @@ func invokeExpr(expr ast.Expr, env *Env) (reflect.Value, error) {
 				arg = NilValue
 			}
 
-			if !isReflect {
-				if e.VarArg && i == l-1 {
-					for j := 0; j < arg.Len(); j++ {
-						args = append(args, arg.Index(j).Elem())
-					}
-				} else {
-					args = append(args, arg)
-				}
-			} else {
-				if arg.Kind() == reflect.Interface {
-					arg = arg.Elem()
-				}
-				if e.VarArg && i == l-1 {
-					for j := 0; j < arg.Len(); j++ {
-						args = append(args, reflect.ValueOf(arg.Index(j).Elem()))
-					}
-				} else {
-					args = append(args, reflect.ValueOf(arg))
-				}
-			}
+			args = append(args, arg)
 		}
 		ret := NilValue
 		fnc := func() {
@@ -466,11 +438,15 @@ func invokeExpr(expr ast.Expr, env *Env) (reflect.Value, error) {
 				f = f.Elem()
 			}
 			rets := f.Call(args)
-			ev := rets[1].Interface()
-			if ev != nil {
-				err = ev.(error)
+			if f.Type().NumOut() == 1 {
+				ret = rets[0]
+			} else {
+				var result []interface{}
+				for _, r := range rets {
+					result = append(result, r.Interface())
+				}
+				ret = reflect.ValueOf(result)
 			}
-			ret = rets[0].Interface().(reflect.Value)
 		}
 		fnc()
 		if err != nil {
