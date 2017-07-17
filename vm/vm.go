@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -38,14 +39,6 @@ func (e *Error) Error() string {
 
 // Func is function interface to reflect functions internaly.
 type Func func(args ...reflect.Value) (reflect.Value, error)
-
-func (f Func) String() string {
-	return fmt.Sprintf("[Func: %p]", f)
-}
-
-func ToFunc(f Func) reflect.Value {
-	return reflect.ValueOf(f)
-}
 
 // Run executes statements in the specified environment.
 func Run(stmts []ast.Stmt, env *Env) (reflect.Value, error) {
@@ -386,6 +379,104 @@ func invokeExpr(expr ast.Expr, env *Env) (reflect.Value, error) {
 		default:
 			return NilValue, errors.New("Unknown operator")
 		}
+	case *ast.CallExpr:
+		f, err := env.Get(e.Name)
+		if err != nil {
+			return f, err
+		}
+
+		_, isReflect := f.Interface().(Func)
+
+		args := []reflect.Value{}
+		l := len(e.SubExprs)
+		for i, expr := range e.SubExprs {
+			arg, err := invokeExpr(expr, env)
+			if err != nil {
+				return arg, err
+			}
+
+			if i < f.Type().NumIn() {
+				if !f.Type().IsVariadic() {
+					it := f.Type().In(i)
+					if arg.Kind().String() == "unsafe.Pointer" {
+						arg = reflect.New(it).Elem()
+					}
+					if arg.Kind() != it.Kind() && arg.IsValid() && arg.Type().ConvertibleTo(it) {
+						arg = arg.Convert(it)
+					} else if arg.Kind() == reflect.Func {
+						if _, isFunc := arg.Interface().(Func); isFunc {
+							rfunc := arg
+							arg = reflect.MakeFunc(it, func(args []reflect.Value) []reflect.Value {
+								for i := range args {
+									args[i] = reflect.ValueOf(args[i])
+								}
+								if e.Go {
+									go func() {
+										rfunc.Call(args)
+									}()
+									return []reflect.Value{}
+								}
+								return rfunc.Call(args)[:it.NumOut()]
+							})
+						}
+					} else if !arg.IsValid() {
+						arg = reflect.Zero(it)
+					}
+				}
+			}
+			if !arg.IsValid() {
+				arg = NilValue
+			}
+
+			if !isReflect {
+				if e.VarArg && i == l-1 {
+					for j := 0; j < arg.Len(); j++ {
+						args = append(args, arg.Index(j).Elem())
+					}
+				} else {
+					args = append(args, arg)
+				}
+			} else {
+				if arg.Kind() == reflect.Interface {
+					arg = arg.Elem()
+				}
+				if e.VarArg && i == l-1 {
+					for j := 0; j < arg.Len(); j++ {
+						args = append(args, reflect.ValueOf(arg.Index(j).Elem()))
+					}
+				} else {
+					args = append(args, reflect.ValueOf(arg))
+				}
+			}
+		}
+		ret := NilValue
+		fnc := func() {
+			defer func() {
+				if os.Getenv("KINAKO_DEBUG") == "" {
+					if ex := recover(); ex != nil {
+						if e, ok := ex.(error); ok {
+							err = e
+						} else {
+							err = errors.New(fmt.Sprint(ex))
+						}
+					}
+				}
+			}()
+			if f.Kind() == reflect.Interface {
+				f = f.Elem()
+			}
+			rets := f.Call(args)
+			ev := rets[1].Interface()
+			if ev != nil {
+				err = ev.(error)
+			}
+			ret = rets[0].Interface().(reflect.Value)
+		}
+		fnc()
+		if err != nil {
+			return ret, err
+		}
+		return ret, nil
 	case *ast.TernaryOpExpr:
 		rv, err := invokeExpr(e.Expr, env)
 		if err != nil {

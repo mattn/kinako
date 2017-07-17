@@ -75,6 +75,16 @@ type TernaryOpExpr struct {
 	Rhs  Expr
 }
 
+// CallExpr provide calling expression.
+type CallExpr struct {
+	ExprImpl
+	Func     interface{}
+	Name     string
+	SubExprs []Expr
+	VarArg   bool
+	Go       bool
+}
+
 // ParenExpr provide parent block expression.
 type ParenExpr struct {
 	ExprImpl
